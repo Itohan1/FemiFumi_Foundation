@@ -127,22 +127,30 @@ function MainSite() {
     }
   }, []);
 
+  const refreshRecentUpdatesData = useCallback(async () => {
+    try {
+      const updates = await getRecentUpdates();
+      setRecentUpdates(updates);
+    } catch (error) {
+      console.error("[RECENT-UPDATES][CLIENT] Failed to refresh recent updates.", error);
+    }
+  }, []);
+
   useEffect(() => {
     void refreshDonationSectionData();
     void refreshUpcomingEventsData();
-    void getRecentUpdates()
-      .then(setRecentUpdates)
-      .catch(() => setRecentUpdates([]));
-  }, [refreshDonationSectionData, refreshUpcomingEventsData]);
+    void refreshRecentUpdatesData();
+  }, [refreshDonationSectionData, refreshUpcomingEventsData, refreshRecentUpdatesData]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       void refreshDonationSectionData();
       void refreshUpcomingEventsData();
+      void refreshRecentUpdatesData();
     }, 5000);
 
     return () => window.clearInterval(timer);
-  }, [refreshDonationSectionData, refreshUpcomingEventsData]);
+  }, [refreshDonationSectionData, refreshUpcomingEventsData, refreshRecentUpdatesData]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {

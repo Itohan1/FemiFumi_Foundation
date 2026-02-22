@@ -34,7 +34,22 @@ const port = Number(process.env.PORT || 4000);
 const adminKey = process.env.ADMIN_KEY || "change-this-admin-key";
 const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 const adminOrigin = process.env.ADMIN_ORIGIN || "http://localhost:5174";
-const allowedOrigins = new Set([clientOrigin, adminOrigin]);
+const configuredOrigins = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+
+function normalizeOrigin(value: string): string {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value.replace(/\/+$/, "");
+  }
+}
+
+const allowedOrigins = new Set(
+  [clientOrigin, adminOrigin, ...configuredOrigins].map((value) => normalizeOrigin(value))
+);
 
 app.use(
   cors({
@@ -44,7 +59,9 @@ app.use(
         return;
       }
 
-      if (allowedOrigins.has(origin)) {
+      const normalizedRequestOrigin = normalizeOrigin(origin);
+
+      if (allowedOrigins.has(normalizedRequestOrigin)) {
         callback(null, true);
         return;
       }
