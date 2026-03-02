@@ -8,7 +8,7 @@ export default function AboutSection({ visionImpactImage }: AboutSectionProps) {
       <div className="grid items-stretch gap-6 rounded-3xl border border-femiBlue/20 bg-white p-6 shadow-warm md:grid-cols-2">
         <div className="flex flex-col justify-center">
           <h2 className="text-4xl font-black text-femiBlue md:text-5xl">
-            About FemiFunmi Charity Organisation
+            About FemiFunmi Charity Organization
           </h2>
           <p className="mt-6 leading-8 text-slate-700">
             Our aim is to link the rich and the poor by providing a platform

@@ -94,7 +94,7 @@ export default function HeroSection({
             <div className="mb-5 inline-flex items-center rounded-2xl bg-white px-4 py-2 shadow-xl">
               <img
                 src={brandLogo}
-                alt="Femifunmi Charity Organisation"
+                alt="Femifunmi Charity Organization"
                 className="h-14 w-auto"
               />
             </div>
@@ -102,7 +102,7 @@ export default function HeroSection({
               Loving and Giving
             </p>
             <h1 className="font-display text-4xl font-black leading-tight md:text-6xl">
-              Femi & Funmi Charity Organisation
+              Femi & Funmi Charity Organization
             </h1>
             <p className="mt-6 max-w-xl text-white/90">
               A non-governmental and non-profitable charity organization
