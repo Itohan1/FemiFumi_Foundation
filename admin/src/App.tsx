@@ -413,6 +413,20 @@ export default function App() {
   }, [activeSection, adminKey, isAdminKeyVerified]);
 
   useEffect(() => {
+    if (activeSection !== "newsletter" || !isAdminKeyVerified) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshNewsletterData().catch(() => {
+        // Avoid noisy toasts for background refresh failures.
+      });
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [activeSection, adminKey, isAdminKeyVerified]);
+
+  useEffect(() => {
     if (activeSection !== "donations") return;
     if (!isAdminKeyVerified) {
       setDonationTransactions([]);
