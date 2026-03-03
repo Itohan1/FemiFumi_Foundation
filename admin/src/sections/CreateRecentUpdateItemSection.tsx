@@ -30,8 +30,6 @@ export function CreateRecentUpdateItemSection({
   handleDeleteRecentUpdate,
   onBackToList
 }: Props) {
-  const minDate = new Date().toISOString().split("T")[0];
-
   return (
     <section className="w-full rounded-2xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -76,7 +74,6 @@ export function CreateRecentUpdateItemSection({
           <input
             required
             type="date"
-            min={minDate}
             value={recentUpdateForm.date}
             onChange={(event) =>
               setRecentUpdateForm((current) => ({
