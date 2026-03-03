@@ -1,8 +1,11 @@
 import "dotenv/config";
 import { randomUUID } from "crypto";
+import { existsSync } from "fs";
+import { fileURLToPath } from "url";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
+import nodemailer from "nodemailer";
 import { z } from "zod";
 import { uploadMediaBuffer } from "./cloudinary.js";
 import {
@@ -38,6 +41,14 @@ const configuredOrigins = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((entry) => entry.trim())
   .filter(Boolean);
+const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
+const smtpPort = Number(process.env.SMTP_PORT || 465);
+const smtpSecure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : smtpPort === 465;
+const smtpUser = process.env.SMTP_USER || "";
+const smtpPass = process.env.SMTP_PASS || "";
+const organizationEmail = process.env.ORGANIZATION_EMAIL || smtpUser || "femifunmiorganization@gmail.com";
+const emailLogoCid = "femifunmi-logo@charity";
+const emailLogoPath = fileURLToPath(new URL("../../client/public/brand/image1.jpg", import.meta.url));
 
 function normalizeOrigin(value: string): string {
   try {
@@ -272,31 +283,191 @@ function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function requireSmtpCredentials(): { user: string; pass: string } {
+  if (!smtpUser || !smtpPass) {
+    throw new Error("SMTP_USER and SMTP_PASS are required to deliver emails.");
+  }
+
+  return { user: smtpUser, pass: smtpPass };
+}
+
+let verifiedMailTransporterPromise: Promise<nodemailer.Transporter> | null = null;
+
+function createMailTransporter(): nodemailer.Transporter {
+  return nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpSecure,
+    auth: requireSmtpCredentials()
+  });
+}
+
+function sanitizeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildEmailShell(payload: { title: string; subtitle: string; bodyHtml: string }): string {
+  return `
+    <div style="margin:0;padding:24px;background:#f8f9fc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+        <tr>
+          <td style="padding:22px 24px;background:linear-gradient(135deg,#0a4b91,#0f172a);color:#ffffff;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+              <tr>
+                <td style="vertical-align:middle;">
+                  <img src="cid:${emailLogoCid}" alt="Femifunmi Charity" style="height:52px;width:auto;display:block;border:0;" />
+                </td>
+                <td style="text-align:right;vertical-align:middle;">
+                  <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.9;">Femifunmi Charity</div>
+                </td>
+              </tr>
+            </table>
+            <h1 style="margin:18px 0 6px;font-size:24px;line-height:1.2;color:#ffffff;">${sanitizeHtml(payload.title)}</h1>
+            <p style="margin:0;font-size:14px;line-height:1.5;opacity:0.95;color:#ffffff;">${sanitizeHtml(payload.subtitle)}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:24px;">
+            ${payload.bodyHtml}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px;background:#f8fafc;color:#475569;font-size:12px;line-height:1.6;border-top:1px solid #e2e8f0;">
+            Femifunmi Charity Organisation<br/>
+            Email: ${sanitizeHtml(organizationEmail)}
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+}
+
+function getEmailLogoAttachment(): Array<{ filename: string; path: string; cid: string }> {
+  if (!existsSync(emailLogoPath)) {
+    return [];
+  }
+
+  return [
+    {
+      filename: "femifunmi-logo.jpg",
+      path: emailLogoPath,
+      cid: emailLogoCid
+    }
+  ];
+}
+
 async function deliverNewsletterBatch(payload: {
   subject: string;
   body: string;
   recipients: NewsletterSubscriber[];
 }): Promise<void> {
-  const webhookUrl = process.env.NEWSLETTER_WEBHOOK_URL;
+  const mailTransporter = await getVerifiedMailTransporter();
+  const recipientEmails = payload.recipients
+    .map((entry) => normalizeEmail(entry.email))
+    .filter(Boolean);
 
-  if (!webhookUrl) {
-    console.log(
-      `[NEWSLETTER][SERVER] NEWSLETTER_WEBHOOK_URL not set. Skipping external delivery for ${payload.recipients.length} recipient(s).`
-    );
-    return;
+  const bccBatchSize = 50;
+  for (let index = 0; index < recipientEmails.length; index += bccBatchSize) {
+    const batch = recipientEmails.slice(index, index + bccBatchSize);
+    const html = buildEmailShell({
+      title: payload.subject,
+      subtitle: "Latest update from Femifunmi Charity Organisation",
+      bodyHtml: `<p style="margin:0;font-size:15px;line-height:1.8;color:#1e293b;">${sanitizeHtml(payload.body).replace(/\n/g, "<br/>")}</p>`
+    });
+
+    await mailTransporter.sendMail({
+      from: organizationEmail,
+      to: organizationEmail,
+      bcc: batch.join(","),
+      subject: payload.subject,
+      text: payload.body,
+      html,
+      attachments: getEmailLogoAttachment()
+    });
   }
+}
 
-  const response = await fetch(webhookUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
+async function deliverContactMessageEmail(payload: ContactMessage): Promise<void> {
+  const mailTransporter = await getVerifiedMailTransporter();
+  const html = buildEmailShell({
+    title: "New Contact Message",
+    subtitle: "A website visitor sent a message through the contact form.",
+    bodyHtml: `
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0 10px;">
+        <tr><td style="font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;">Name</td></tr>
+        <tr><td style="font-size:16px;color:#0f172a;font-weight:700;">${sanitizeHtml(payload.fullName)}</td></tr>
+        <tr><td style="font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;padding-top:6px;">Email</td></tr>
+        <tr><td style="font-size:15px;color:#0f172a;">${sanitizeHtml(payload.email)}</td></tr>
+        <tr><td style="font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;padding-top:6px;">Phone</td></tr>
+        <tr><td style="font-size:15px;color:#0f172a;">${sanitizeHtml(payload.phoneNumber)}</td></tr>
+        <tr><td style="font-size:13px;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;padding-top:10px;">Message</td></tr>
+        <tr>
+          <td style="font-size:15px;line-height:1.8;color:#0f172a;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">
+            ${sanitizeHtml(payload.message).replace(/\n/g, "<br/>")}
+          </td>
+        </tr>
+        <tr><td style="font-size:12px;color:#64748b;padding-top:6px;">Received: ${sanitizeHtml(payload.createdAt)}</td></tr>
+      </table>
+    `
   });
 
-  if (!response.ok) {
-    throw new Error("Newsletter delivery provider returned an error.");
+  await mailTransporter.sendMail({
+    from: organizationEmail,
+    to: organizationEmail,
+    replyTo: payload.email,
+    subject: `New Contact Message from ${payload.fullName}`,
+    text: [
+      `Name: ${payload.fullName}`,
+      `Email: ${payload.email}`,
+      `Phone: ${payload.phoneNumber}`,
+      "",
+      "Message:",
+      payload.message
+    ].join("\n"),
+    html,
+    attachments: getEmailLogoAttachment()
+  });
+}
+
+async function getVerifiedMailTransporter(): Promise<nodemailer.Transporter> {
+  if (!verifiedMailTransporterPromise) {
+    verifiedMailTransporterPromise = (async () => {
+      const transporter = createMailTransporter();
+      await transporter.verify();
+      console.log(`[MAILER][SERVER] SMTP ready on ${smtpHost}:${smtpPort} as ${smtpUser}.`);
+      return transporter;
+    })().catch((error) => {
+      verifiedMailTransporterPromise = null;
+      throw error;
+    });
   }
+
+  return verifiedMailTransporterPromise;
+}
+
+void getVerifiedMailTransporter().catch((error) => {
+  console.error("[MAILER][SERVER] SMTP verification failed at startup.", error);
+});
+
+function mapServerErrorToMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    const lower = error.message.toLowerCase();
+    if (
+      lower.includes("invalid login") ||
+      lower.includes("invalid credentials") ||
+      lower.includes("username and password") ||
+      lower.includes("authentication")
+    ) {
+      return "Email service authentication failed. Please verify SMTP credentials.";
+    }
+  }
+
+  return fallback;
 }
 
 async function buildRecentUpdateMediaFromMultipart(payload: {
@@ -1191,6 +1362,13 @@ app.post(
 
     store.contactMessages.unshift(message);
     await saveStore(store);
+    try {
+      await deliverContactMessageEmail(message);
+    } catch (error) {
+      const message = mapServerErrorToMessage(error, "Failed to deliver contact email.");
+      return res.status(502).json({ message });
+    }
+    console.log(`[CONTACT][SERVER] Forwarded contact message ${message.id} to ${organizationEmail}.`);
 
     return res.status(201).json({ ok: true });
   })
@@ -1302,11 +1480,16 @@ app.post(
       return res.status(400).json({ message: "No active newsletter subscribers found." });
     }
 
-    await deliverNewsletterBatch({
-      subject: parsed.data.subject,
-      body: parsed.data.body,
-      recipients
-    });
+    try {
+      await deliverNewsletterBatch({
+        subject: parsed.data.subject,
+        body: parsed.data.body,
+        recipients
+      });
+    } catch (error) {
+      const message = mapServerErrorToMessage(error, "Failed to send newsletter email.");
+      return res.status(502).json({ message });
+    }
 
     const campaign: NewsletterCampaign = {
       id: createId("newsletter-campaign"),
@@ -1333,10 +1516,8 @@ app.post(
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(error);
   const isProduction = process.env.NODE_ENV === "production";
-  const message =
-    !isProduction && error instanceof Error && error.message
-      ? error.message
-      : "Internal server error";
+  const defaultMessage = !isProduction && error instanceof Error && error.message ? error.message : "Internal server error";
+  const message = mapServerErrorToMessage(error, defaultMessage);
   res.status(500).json({ message });
 });
 

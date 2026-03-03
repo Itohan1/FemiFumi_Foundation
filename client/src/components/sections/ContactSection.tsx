@@ -27,7 +27,7 @@ export default function ContactSection({
             </p>
             <div className="mt-6 space-y-2 text-sm text-slate-800">
               <p>Website: www.femifunmicharity.org</p>
-              <p>Email: femifunmicharity@gmail.com</p>
+              <p>Email: femifunmiorganization@gmail.com</p>
               <div className="pt-2">
                 <p className="mb-2 font-semibold text-femiBlue">
                   Social Channels

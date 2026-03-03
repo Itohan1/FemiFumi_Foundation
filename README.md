@@ -1,6 +1,6 @@
 # Femifunmi Charity Website
 
-Full-stack charity organization website for **Femi & Funmi Charity Organisation** built with:
+Full-stack charity organization website for **Femi & Funmi Charity Organization** built with:
 
 - Public website: React + TypeScript + Vite + Tailwind CSS
 - Admin website: React + TypeScript + Vite + Tailwind CSS
@@ -52,4 +52,16 @@ npm run dev
 - Home, About, Gallery, Donations, Contact sections
 - Organization details, social links, mission statements
 - Contact form API integration
+- Contact form email forwarding to `ORGANIZATION_EMAIL` (SMTP)
 - Donation case listing with backend-managed content
+- Newsletter signup from public site and newsletter campaigns from admin panel
+
+## Email setup (Gmail app password)
+
+In `server/.env`, set:
+
+- `SMTP_USER=femifunmiorganization@gmail.com`
+- `SMTP_PASS=<your-gmail-app-password>`
+- `ORGANIZATION_EMAIL=femifunmiorganization@gmail.com`
+
+Then restart the server. Contact messages and admin newsletter sends will be delivered through this mailbox.
